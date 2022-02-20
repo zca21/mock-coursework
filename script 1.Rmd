@@ -1,0 +1,113 @@
+---
+title: "Untitled"
+author: "Zachary Atter"
+date: "19/02/2022"
+output: html_document
+---
+##Setting up enviroment
+```{r, message=FALSE}
+load("NHANES0506.rda")
+library(tidyverse)
+library(Hmisc)
+library(summarytools)
+library(haven)
+library(labelled)
+library(cowplot)
+```
+
+##Data exploration
+```{r}
+summary(dat)
+
+summary_df<-as_tibble(dfSummary(dat))
+
+print(dfSummary(dat,style='grid', plain.ascii = FALSE, graph.col = FALSE))
+
+
+describe(dat)
+#notice
+
+#Splitting into continous and categorical, notice 
+contvar<-names(dat%>%
+                select_if(is.numeric))
+catvar<-names(dat%>%
+                select_if(is.factor))
+
+names(dat)
+#labelling variables so know what they mean easily
+#no info on variables after LBXAPB
+
+#https://www.icpsr.umich.edu/web/NACDA/search/variables?start=0&sort=STUDYID%20asc%2CDATASETID%20asc%2CSTARTPOS%20asc&STUDYQ=25504&EXTERNAL_FLAG=1&ARCHIVE=NACDA&rows=50 does not even contain any info on the later variables (I think they have been renamed)
+
+var_label(dat) <- list(SEQN = "Respondent sequence number", RIAGENDR = "Gender",RIDAGEYR="Age at screening",RIDRETH1="Race/Ethnicity",
+                       DMDEDUC2="education level- adults 20+",DMDMARTL="Martial status",INDFMINC="Annual family income",LBXGH="Glycohemoglobin (%)",BMXHT="Standing Height (cm)",BMXBMI="Body Mass Index (kg/m**2)",BMXWAIST="Waist Circumference (cm)",LBXTR="	Triglyceride (mg/dL)",LBDLDL="LDL-cholesterol (mg/dL)",LBXAPB="Apolipoprotein (B) (mg/dL)",valid_days="",valid_min="",cpm="",sed_min="")
+
+#Formatting variables that should be continous
+#Used infomation from https://wwwn.cdc.gov/nchs/nhanes/2005-2006/DEMO_D.htm#RIDRETH1 to find labels for levels
+dat<-dat%>%mutate(Gender=factor(RIAGENDR,levels=c(1,2),labels=c("Male","Female")),
+                  Ethnicity=factor(RIDRETH1,levels=c(1,2,3,4,5),labels=c("Mexican American","Other Hispanic","Non-Hispanic White","Non-Hispanic Black","Other Race")),
+                  Education=factor(DMDEDUC2,levels = c(1,2,3,4,5),labels=c("< 9th grade","9-11th grade","high school grade","Some College","College graduate")),
+                  Married=factor(DMDMARTL,levels = c(1:6),labels=c("Married","Widowed","Divorved","Seperated","Never Married","Living with partner")))%>%
+  select(-RIAGENDR,-RIDRETH1,-DMDEDUC2,-DMDMARTL)
+
+#Creating new variable which is used to sort subjects into 3 groups depending on their Glycohemoglobin (%) we note that 49 patients had an NA reading for this measurement
+dat<-dat%>%mutate(diabetes=ifelse(LBXGH>=6.5,"diabetes",ifelse(LBXGH>5.7,"pre-diabetes",ifelse(is.na(LBXGH)==F,"no diabetes",NA))))
+
+#we create a new dataset for patients that don't have diabetes/ pre-diabetes (we have to take care as we have excluded the 49 NA values from this datset)
+no_diabetes<-dat%>%filter(diabetes=="no diabetes")
+
+```
+
+##Inital plots to investigate variables and associations
+```{r}
+#denisty/histogram of response variable to see skewness of response
+
+dens_gly<-ggplot(no_diabetes,aes(x=LBXGH))+geom_density()+
+  ylab("Count")+
+  xlab("Glycohemoglobin (%)")+
+  theme(plot.background = element_rect(fill = "white"),panel.background = element_rect(fill = "white"),axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"),legend.background = element_rect(colour = "grey50"),panel.border = element_blank(),panel.grid.major = element_blank(), panel.grid.minor = element_blank(),axis.title=element_text(size=18,face="bold"),axis.text=element_text(size=18),axis.title.x = element_text(vjust=-0.1),legend.title=element_blank())
+
+hist_gly<-ggplot(no_diabetes,aes(x=LBXGH))+geom_histogram(bins = 20,color="black",fill="white")+
+  ylab("Count")+
+  xlab("Glycohemoglobin (%)")+
+  theme(plot.background = element_rect(fill = "white"),panel.background = element_rect(fill = "white"),axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"),legend.background = element_rect(colour = "grey50"),panel.border = element_blank(),panel.grid.major = element_blank(), panel.grid.minor = element_blank(),axis.title=element_text(size=18,face="bold"),axis.text=element_text(size=18),axis.title.x = element_text(vjust=-0.1),legend.title=element_blank())
+
+plot_grid(dens_gly,hist_gly)
+```
+
+```{r}
+#creating 2 vectors of the continous and categorical variables
+contvar<-set_names(names(dat%>%
+                select_if(is.numeric)))
+catvar<-set_names(names(dat%>%
+                select_if(is.factor)))
+
+#creating plots for all continous and categorical variables
+
+#scatter plot and histograms for continous
+scatter_fun<-function(x){
+ ggplot(no_diabetes,aes(x=.data[[x]],y=.data[["LBXGH"]]))+geom_point()
+}
+eval_plots<-map(contvar,~scatter_fun(.x))
+plot_grid(plotlist = eval_plots)
+
+hist_fun<-function(x){
+  ggplot(no_diabetes,aes(x=.data[[x]]))+geom_histogram(bins = 10)
+}
+hist_plots<-map(contvar,~hist_fun(.x))
+plot_grid(plotlist = hist_plots)
+
+#bopxplots and barcharts for categorical
+box_fun<-function(x){
+ ggplot(no_diabetes,aes(x=.data[[x]],y=.data[["LBXGH"]]))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90))
+}
+eval_plots<-map(catvar,~box_fun(.x))
+plot_grid(plotlist = eval_plots)
+
+bar_func<-function(x){
+  ggplot(no_diabetes,aes(x=.data[[x]],fill=.data[[x]]))+geom_bar()+theme(axis.text.x = element_text(angle = 90),legend.position = "none")
+}
+
+bar_plots<-map(catvar,~bar_func(.x))
+plot_grid(plotlist = bar_plots)
+```
