@@ -48,7 +48,7 @@ var_label(dat) <- list(SEQN = "Respondent sequence number", RIAGENDR = "Gender",
 dat<-dat%>%mutate(Gender=factor(RIAGENDR,levels=c(1,2),labels=c("Male","Female")),
                   Ethnicity=factor(RIDRETH1,levels=c(1,2,3,4,5),labels=c("Mexican American","Other Hispanic","Non-Hispanic White","Non-Hispanic Black","Other Race")),
                   Education=factor(DMDEDUC2,levels = c(1,2,3,4,5),labels=c("< 9th grade","9-11th grade","high school grade","Some College","College graduate")),
-                  Married=factor(DMDMARTL,levels = c(1:6),labels=c("Married","Widowed","Divorved","Seperated","Never Married","Living with partner")))%>%
+                  Married=factor(DMDMARTL,levels = c(1:6),labels=c("Married","Widowed","Divorced","Seperated","Never Married","Living with partner")))%>%
   select(-RIAGENDR,-RIDRETH1,-DMDEDUC2,-DMDMARTL)
 
 #Creating new variable which is used to sort subjects into 3 groups depending on their Glycohemoglobin (%) we note that 49 patients had an NA reading for this measurement
@@ -152,27 +152,44 @@ as.data.frame(correlation)%>%
 xtabs(~area+soiltype,data=sprucedata)
 xtabs(~area+soiltxt,data=sprucedata)
 
-#looking at proptions of subjects with pre/diabetes to see if assocation exists between this and categoical variable as will give an idea of if these variables have an effect on likelihood of having high gly
+#seems ethnicity and education are correlated (confounded with each other), only include one
+xtabs(~Ethnicity+Education,data=dat)
 
+#looking at proptions of subjects with pre/diabetes to see if assocation exists between this and categoical variable as will give an idea of if these variables have an effect on likelihood of having high gly
 diabetes<-dat%>%filter(diabetes %in% c("diabetes","pre-diabetes"))
 
-#count grouped
+#count grouped (do we want to do this for all categorical variables?)
 ggplot(dat,aes(x=Ethnicity,fill=diabetes))+geom_bar(position = "dodge")+theme(axis.text.x = element_text(angle = 90))
 
-#Adding proportions variable to dataframe
-dat2<-dat%>%group_by(Ethnicity,diabetes)%>%
-  summarise(count_diabetes=n())%>%
-  left_join(dat%>%group_by(Ethnicity)%>%summarise(count_eth=n()),by="Ethnicity")%>%
-  mutate(proportion=round(count_diabetes/count_eth,2))
-
+prop_func<-function(x_var){
+  #creating proportion dataset to feed into ggplot
+  group_var<-enquo(x_var)
+  merge_dat<-dat%>%group_by(!!group_var)%>%summarise(count_var=n())
+  plot_data<-dat%>%group_by(!!group_var,diabetes)%>%
+     summarise(count_diabetes=n())%>%
+     left_join(merge_dat)%>%
+     mutate(proportion=round(count_diabetes/count_var,2))
+  
 #reordering diabetes levels for the plot
-dat2$diabetes <- factor(dat2$diabetes, levels = c(NA, "diabetes", "pre-diabetes","no diabetes"))
+plot_data$diabetes <- factor(plot_data$diabetes, levels = c(NA, "diabetes", "pre-diabetes","no diabetes"))
 
-ggplot(dat2,aes(x=Ethnicity,y=proportion,fill=diabetes))+
+#plotting data   
+ggplot(plot_data,aes(x=!!group_var,y=proportion,fill=diabetes))+
   geom_bar(stat="identity")+
   ylab("Proportion")+
   theme(axis.text.x = element_text(angle = 90))
-  
+}
+
+#Running function on the categorical variables and putting into 2 by 2 plot to view all at once
+pf_eth<-prop_func(Ethnicity)
+pf_m<-prop_func(Married)
+pf_g<-prop_func(Gender)
+pf_ed<-prop_func(Education)
+
+plot_grid(pf_eth,pf_m,pf_g,pf_ed)
+
+#figure out how to get map to work at some point (if have time)
+#map(noquote(catvar), ~prop_func(.x))
 ```
 
 
@@ -180,15 +197,33 @@ ggplot(dat2,aes(x=Ethnicity,y=proportion,fill=diabetes))+
 ##model  fitting
 #would like to know what is defined as high Gly for non-diabetic patients
 ```{r}
-#seems likekly that gender would have an effect on Gly % aswell as ethnicity
+#From web search ways to lower A1C (Gylcohemoglobin) include: losing weight(in particular not being overweight-related to BMI), exercise, eat more vegtables (lower carbs)-I am going to assume this is easier for people more 'well off'
 
+#from this I will want to include BMI, an excerise (choose MVPA arbitary until know more about them [only want to choose one as know they are highly correlated to each other]), annual family income, age (affects weight and also not include married status as confounded with this, [this may also be confounded with other variables such as exercise etc]), ethnicity as diabetic proportion seems to vary significantly with ethnicity
 
-
-lm1<-glm(LBXGH/(max(no_diabetes$LBXGH,na.rm=F))~LBDLDL,family=binomial,data=no_diabetes)
-
+#choose lm as simplist to start with
+lm1<-lm(LBXGH~RIDAGEYR+mvpa_percent+INDFMINC+BMXBMI+Ethnicity,data=no_diabetes)
 summary(lm1)
 
-summary(no_diabetes$LBXGH)
-help(max)
-no_diabetes$LBXGH
+anova(lm1)
+
+
+#Now I will perform iteration using AIC with step function to find other models to compare to my intial one to see how they vary (will then need to consider other distributions)
+#start with forward iteration
+
+#had to do this line of code to stop errors (need to understand what this is actually doing though)
+no_diabetes<-na.omit(no_diabetes)
+
+lm_intercept<-lm(LBXGH~1,data=no_diabetes)
+
+data_all<-no_diabetes%>%select(-SEQN,-LBXGH,-diabetes)
+all_var=paste(names(data_all),collapse="+")
+formula_all<-paste("LBXGH~",all_var,sep="")
+lm_all<-lm(formula_all,data=no_diabetes)
+forward_lm<-step(lm_intercept, direction='forward', scope=formula(lm_all),trace = 0)
+
+forward_lm$coefficients
+#The forward iteration has selected age, ethnicity, BMI, education,; minimum active time and seditary bouted 30 min 
+
+#Next do backward abd both iterations then compare to original model and evaluate what needs to be done
 ```
