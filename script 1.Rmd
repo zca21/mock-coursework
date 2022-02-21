@@ -13,6 +13,7 @@ library(summarytools)
 library(haven)
 library(labelled)
 library(cowplot)
+library(kableExtra)
 ```
 
 ##Data exploration
@@ -40,7 +41,7 @@ names(dat)
 #https://www.icpsr.umich.edu/web/NACDA/search/variables?start=0&sort=STUDYID%20asc%2CDATASETID%20asc%2CSTARTPOS%20asc&STUDYQ=25504&EXTERNAL_FLAG=1&ARCHIVE=NACDA&rows=50 does not even contain any info on the later variables (I think they have been renamed)
 
 var_label(dat) <- list(SEQN = "Respondent sequence number", RIAGENDR = "Gender",RIDAGEYR="Age at screening",RIDRETH1="Race/Ethnicity",
-                       DMDEDUC2="education level- adults 20+",DMDMARTL="Martial status",INDFMINC="Annual family income",LBXGH="Glycohemoglobin (%)",BMXHT="Standing Height (cm)",BMXBMI="Body Mass Index (kg/m**2)",BMXWAIST="Waist Circumference (cm)",LBXTR="	Triglyceride (mg/dL)",LBDLDL="LDL-cholesterol (mg/dL)",LBXAPB="Apolipoprotein (B) (mg/dL)",valid_days="",valid_min="",cpm="",sed_min="")
+                       DMDEDUC2="education level- adults 20+",DMDMARTL="Martial status",INDFMINC="Annual family income",LBXGH="Glycohemoglobin (%)",BMXHT="Standing Height (cm)",BMXBMI="Body Mass Index (kg/m**2)",BMXWAIST="Waist Circumference (cm)",LBXTR="	Triglyceride (mg/dL)",LBDLDL="LDL-cholesterol (mg/dL)",LBXAPB="Apolipoprotein (B) (mg/dL)",valid_days="",valid_min="",cpm="",sed_min="minimum sedintary",light_min="minimum light exercise",active_min="minimum active exercise",sed_percent="sedintary percent",light_percent="light exercise percent",life_percent="",mod_percent="moderate exercise percent",vig_percent="vigarous exercise percent",lightlife_percent="",mvpa_percent="moderate to vigorous physical activity",active_percent="percent of physical activity",sed_bouted_30min="",num_mvpa_bouts="",num_vig_bouts="",mvpa_bouted="",vig_bouted="",guideline_min="")
 
 #Formatting variables that should be continous
 #Used infomation from https://wwwn.cdc.gov/nchs/nhanes/2005-2006/DEMO_D.htm#RIDRETH1 to find labels for levels
@@ -108,6 +109,86 @@ bar_func<-function(x){
   ggplot(no_diabetes,aes(x=.data[[x]],fill=.data[[x]]))+geom_bar()+theme(axis.text.x = element_text(angle = 90),legend.position = "none")
 }
 
+
 bar_plots<-map(catvar,~bar_func(.x))
 plot_grid(plotlist = bar_plots)
+```
+
+```{r}
+#splitting continous variables so easier to view (gave up on automating the process)
+split_var<-split(contvar,ceiling(seq_along(contvar)/12))
+
+scatter1<-map(as.list(names(split_var[[1]])),~scatter_fun(.x))
+scatter2<-map(as.list(names(split_var[[2]])),~scatter_fun(.x))
+scatter3<-map(as.list(names(split_var[[3]])),~scatter_fun(.x))
+
+plot_grid(plotlist = scatter1)
+plot_grid(plotlist = scatter2)
+plot_grid(plotlist = scatter3)
+```
+
+##Correlation of continous variables
+```{r}
+#removing SEQN variable as is only id number
+nd_filtered<-no_diabetes%>%select(-SEQN)
+
+#using only complete observations (this will introduce bias but will allow us to see associations that should exist even with the missing data unless systematic will need to look at how data was gathered etc)
+correlation<-round(cor(select_if(nd_filtered,is.numeric),use = "complete.obs"),2)
+correlation
+
+#Highlighting all elements of correlation matrix with absolute value greater than 0.5
+as.data.frame(correlation)%>%
+  mutate_all(~cell_spec(.x, color = ifelse(abs(.x)>0.5, "red"," black"))) %>%
+  kable(escape = F) %>%
+  kable_styling()
+
+#Looking at the results we can see many of the later active variables are highly correlated as would be expected therefore we should only select 1 (need to know more about their descriptions to choose) and maybe consult with a sport scientist at which excerise category is likely to be effect at reducing A1C (ie is any exercise effective or does it need to be moderate/vigorous?)
+```
+
+##Associations of categorical variables
+```{r}
+#Now we look at the categorical variables (minus the one I don't know how to code so is currently a continous variable)
+
+xtabs(~area+soiltype,data=sprucedata)
+xtabs(~area+soiltxt,data=sprucedata)
+
+#looking at proptions of subjects with pre/diabetes to see if assocation exists between this and categoical variable as will give an idea of if these variables have an effect on likelihood of having high gly
+
+diabetes<-dat%>%filter(diabetes %in% c("diabetes","pre-diabetes"))
+
+#count grouped
+ggplot(dat,aes(x=Ethnicity,fill=diabetes))+geom_bar(position = "dodge")+theme(axis.text.x = element_text(angle = 90))
+
+#Adding proportions variable to dataframe
+dat2<-dat%>%group_by(Ethnicity,diabetes)%>%
+  summarise(count_diabetes=n())%>%
+  left_join(dat%>%group_by(Ethnicity)%>%summarise(count_eth=n()),by="Ethnicity")%>%
+  mutate(proportion=round(count_diabetes/count_eth,2))
+
+#reordering diabetes levels for the plot
+dat2$diabetes <- factor(dat2$diabetes, levels = c(NA, "diabetes", "pre-diabetes","no diabetes"))
+
+ggplot(dat2,aes(x=Ethnicity,y=proportion,fill=diabetes))+
+  geom_bar(stat="identity")+
+  ylab("Proportion")+
+  theme(axis.text.x = element_text(angle = 90))
+  
+```
+
+
+
+##model  fitting
+#would like to know what is defined as high Gly for non-diabetic patients
+```{r}
+#seems likekly that gender would have an effect on Gly % aswell as ethnicity
+
+
+
+lm1<-glm(LBXGH/(max(no_diabetes$LBXGH,na.rm=F))~LBDLDL,family=binomial,data=no_diabetes)
+
+summary(lm1)
+
+summary(no_diabetes$LBXGH)
+help(max)
+no_diabetes$LBXGH
 ```
