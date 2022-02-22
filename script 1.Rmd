@@ -8,9 +8,9 @@ output: html_document
 ```{r, message=FALSE}
 load("NHANES0506.rda")
 library(tidyverse)
-library(Hmisc)
-library(summarytools)
-library(haven)
+# library(Hmisc)
+# library(summarytools)
+# library(haven)
 library(labelled)
 library(cowplot)
 library(kableExtra)
@@ -20,12 +20,12 @@ library(kableExtra)
 ```{r}
 summary(dat)
 
-summary_df<-as_tibble(dfSummary(dat))
+#summary_df<-as_tibble(dfSummary(dat))
 
-print(dfSummary(dat,style='grid', plain.ascii = FALSE, graph.col = FALSE))
+#print(dfSummary(dat,style='grid', plain.ascii = FALSE, graph.col = FALSE))
 
 
-describe(dat)
+#describe(dat)
 #notice
 
 #Splitting into continous and categorical, notice 
@@ -149,9 +149,6 @@ as.data.frame(correlation)%>%
 ```{r}
 #Now we look at the categorical variables (minus the one I don't know how to code so is currently a continous variable)
 
-xtabs(~area+soiltype,data=sprucedata)
-xtabs(~area+soiltxt,data=sprucedata)
-
 #seems ethnicity and education are correlated (confounded with each other), only include one
 xtabs(~Ethnicity+Education,data=dat)
 
@@ -201,6 +198,8 @@ plot_grid(pf_eth,pf_m,pf_g,pf_ed)
 
 #from this I will want to include BMI, an excerise (choose MVPA arbitary until know more about them [only want to choose one as know they are highly correlated to each other]), annual family income, age (affects weight and also not include married status as confounded with this, [this may also be confounded with other variables such as exercise etc]), ethnicity as diabetic proportion seems to vary significantly with ethnicity
 
+no_diabetes<-na.omit(no_diabetes)
+
 #choose lm as simplist to start with
 lm1<-lm(LBXGH~RIDAGEYR+mvpa_percent+INDFMINC+BMXBMI+Ethnicity,data=no_diabetes)
 summary(lm1)
@@ -226,4 +225,22 @@ forward_lm$coefficients
 #The forward iteration has selected age, ethnicity, BMI, education,; minimum active time and seditary bouted 30 min 
 
 #Next do backward abd both iterations then compare to original model and evaluate what needs to be done
+
+backward_lm<-step(lm_all,direction="backward",scope=formula(lm_all),trace=0)
+backward_lm$coefficients
+#going backwards includes age, BMI, Ethnicity, Education,
+
+summary(backward_lm)
+
+#From previous knowledge LDLC and ApoB are both molecules that are linked to cardiovascular diseases and thus makes sense to be correlated with increase in Gly (may also be correlated with BMI)
+
+both_lm<- step(lm_intercept, direction='both', scope=formula(lm_all), trace=0)
+both_lm$coefficients
+#When applying iterations in both directions we find that the other lab readings are no longer significant
+#Age, Ethnicity, BMI, Education, minimun physical activity and sedintary bouted 30 min (agreeing with forward iteration of step function)
+
+#now we compare our initial model to the step function model to decide if any changes need to be made (wold proberally also want to consult an expert/ google)
+
+lm1$coefficients
+anova(lm1,forward_lm)
 ```
