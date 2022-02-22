@@ -142,6 +142,8 @@ as.data.frame(correlation)%>%
   kable(escape = F) %>%
   kable_styling()
 
+correlation["active_min"]
+
 #Looking at the results we can see many of the later active variables are highly correlated as would be expected therefore we should only select 1 (need to know more about their descriptions to choose) and maybe consult with a sport scientist at which excerise category is likely to be effect at reducing A1C (ie is any exercise effective or does it need to be moderate/vigorous?)
 ```
 
@@ -241,6 +243,36 @@ both_lm$coefficients
 
 #now we compare our initial model to the step function model to decide if any changes need to be made (wold proberally also want to consult an expert/ google)
 
-lm1$coefficients
-anova(lm1,forward_lm)
+#comparing AIC
+AIC(lm1)
+#value of 376.5691
+AIC(forward_lm)
+#value of 353.3098
+
+#We consider removing annual income, and adding education and changing the physical activity variable to either sed_bouted or active_min (-0.64 is correlation between them so choose 1 for the moment)
+forward_lm$coefficients
+
+lm2<-lm(LBXGH~RIDAGEYR+active_min+BMXBMI+Ethnicity+Education,data=no_diabetes)
+
+AIC(lm2)
+
+lm3<-lm(LBXGH~RIDAGEYR+sed_bouted_30min+BMXBMI+Ethnicity+Education,data=no_diabetes)
+AIC(lm3)
+
+#from this we think active_min is best variable but the AIC has increased from lm1 very interesting that one of the exercise variables has not much effect but both dramicatally decreases the AIC we now consider adding an interaction between the 2
+
+lm4<-lm(LBXGH~RIDAGEYR+sed_bouted_30min*active_min+BMXBMI+Ethnicity+Education,data=no_diabetes)
+AIC(lm4)
+
+summary(lm4)
+
+#no point in interaction (me thinks)
+
+
+
+anova(lm2,forward_lm)
+
+forward_lm$coefficients
+
+forward_lm$coefficients
 ```
