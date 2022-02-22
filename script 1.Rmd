@@ -12,7 +12,7 @@ library(tidyverse)
 # library(summarytools)
 # library(haven)
 library(labelled)
-library(cowplot)
+#library(cowplot)
 library(kableExtra)
 ```
 
@@ -21,14 +21,12 @@ library(kableExtra)
 summary(dat)
 
 #summary_df<-as_tibble(dfSummary(dat))
-
 #print(dfSummary(dat,style='grid', plain.ascii = FALSE, graph.col = FALSE))
-
 
 #describe(dat)
 #notice
 
-#Splitting into continous and categorical, notice 
+#Splitting into continuous and categorical, notice 
 contvar<-names(dat%>%
                 select_if(is.numeric))
 catvar<-names(dat%>%
@@ -43,8 +41,8 @@ names(dat)
 var_label(dat) <- list(SEQN = "Respondent sequence number", RIAGENDR = "Gender",RIDAGEYR="Age at screening",RIDRETH1="Race/Ethnicity",
                        DMDEDUC2="education level- adults 20+",DMDMARTL="Martial status",INDFMINC="Annual family income",LBXGH="Glycohemoglobin (%)",BMXHT="Standing Height (cm)",BMXBMI="Body Mass Index (kg/m**2)",BMXWAIST="Waist Circumference (cm)",LBXTR="	Triglyceride (mg/dL)",LBDLDL="LDL-cholesterol (mg/dL)",LBXAPB="Apolipoprotein (B) (mg/dL)",valid_days="",valid_min="",cpm="",sed_min="minimum sedintary",light_min="minimum light exercise",active_min="minimum active exercise",sed_percent="sedintary percent",light_percent="light exercise percent",life_percent="",mod_percent="moderate exercise percent",vig_percent="vigarous exercise percent",lightlife_percent="",mvpa_percent="moderate to vigorous physical activity",active_percent="percent of physical activity",sed_bouted_30min="",num_mvpa_bouts="",num_vig_bouts="",mvpa_bouted="",vig_bouted="",guideline_min="")
 
-#Formatting variables that should be continous
-#Used infomation from https://wwwn.cdc.gov/nchs/nhanes/2005-2006/DEMO_D.htm#RIDRETH1 to find labels for levels
+#Formatting variables that should be continuous
+#Used information from https://wwwn.cdc.gov/nchs/nhanes/2005-2006/DEMO_D.htm#RIDRETH1 to find labels for levels
 dat<-dat%>%mutate(Gender=factor(RIAGENDR,levels=c(1,2),labels=c("Male","Female")),
                   Ethnicity=factor(RIDRETH1,levels=c(1,2,3,4,5),labels=c("Mexican American","Other Hispanic","Non-Hispanic White","Non-Hispanic Black","Other Race")),
                   Education=factor(DMDEDUC2,levels = c(1,2,3,4,5),labels=c("< 9th grade","9-11th grade","high school grade","Some College","College graduate")),
@@ -54,10 +52,34 @@ dat<-dat%>%mutate(Gender=factor(RIAGENDR,levels=c(1,2),labels=c("Male","Female")
 #Creating new variable which is used to sort subjects into 3 groups depending on their Glycohemoglobin (%) we note that 49 patients had an NA reading for this measurement
 dat<-dat%>%mutate(diabetes=ifelse(LBXGH>=6.5,"diabetes",ifelse(LBXGH>5.7,"pre-diabetes",ifelse(is.na(LBXGH)==F,"no diabetes",NA))))
 
-#we create a new dataset for patients that don't have diabetes/ pre-diabetes (we have to take care as we have excluded the 49 NA values from this datset)
+#we create a new dataset for patients that don't have diabetes/ pre-diabetes (we have to take care as we have excluded the 49 NA values from this dataset.)
 no_diabetes<-dat%>%filter(diabetes=="no diabetes")
-
 ```
+
+#Checking for errors in data
+```{r}
+#Annual family income
+tail(sort(dat$INDFMINC),n=15)
+#Jumps from 13 to 77, should investigate this
+
+#Body Mass Index
+tail(sort(dat$BMXBMI),n=5)
+#130.21 extremely high compared to others, norm max value around 60.
+
+#Triglyceride
+tail(sort(dat$LBXTR),n=10)
+#Last few values very quicker increase, could look into this.
+
+#Minimum sedintary
+head(sort(dat$sed_min),n=5)
+#Sudden change from 68.25 to over 153.40 in last 4 values.
+
+tail(sort(dat$num_mvpa_bouts),n=5)
+tail(sort(dat$num_vig_bouts),n=5)
+tail(sort(dat$mvpa_bouted),n=5)
+#Last value of all these much larger then rest of data.
+```
+
 
 ##Inital plots to investigate variables and associations
 ```{r}
