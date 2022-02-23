@@ -14,6 +14,7 @@ library(tidyverse)
 library(labelled)
 library(cowplot)
 library(kableExtra)
+library(broom)
 ```
 
 ##Data exploration
@@ -57,6 +58,11 @@ dat<-dat%>%mutate(diabetes=ifelse(LBXGH>=6.5,"diabetes",ifelse(LBXGH>5.7,"pre-di
 #we create a new dataset for patients that don't have diabetes/ pre-diabetes (we have to take care as we have excluded the 49 NA values from this datset)
 no_diabetes<-dat%>%filter(diabetes=="no diabetes")
 
+#investigating missing data (by calculating percentage of missing data for each variable)
+no_diabetes %>% summarize_all(funs(round(sum(is.na(.))*100 / length(.),3)))
+dat %>% summarize_all(funs(round(sum(is.na(.))*100 / length(.),3)))
+
+#note that in the original dataset nearly 5% of patients have a missing A1C value thus are excluded from the anaylsis as cannot be used, we would want to investigate these patients further to see why they had a missing value (was it systematic which could introduce bias or was it simply a error?)
 ```
 
 ##Inital plots to investigate variables and associations
@@ -275,4 +281,43 @@ anova(lm2,forward_lm)
 forward_lm$coefficients
 
 forward_lm$coefficients
+```
+
+```{r}
+#testing model assumptions
+#Im goign to assume we are happy with lm2
+par(mfrow = c(2, 2))
+plot(lm2)
+
+#Plot 1: The residual plot shows residuals are centered around 0 and fairly evenly bunched
+
+#Plot 2: The plots do vear of the straight line of the qq plot at the tails, thus we cannot be confident in the normality assumption
+
+#Plot 3: The scale location shows a fairly straight line thus the variablity of the residual points stays constant with the value of the fitted outcome variable, suggesting constant variance in the residual error (or homoscedasticity) [if this was not the case could try logging the response]
+
+##Plot 4: From this plot we can see that row 717 is a highly influential point as is located in bottom right of plot
+
+#further investigating influential points with a Cook's distance plot
+plot(lm2,4)
+#we see 304,337 and 717 are all highly influential
+
+lm2.diag.metrics%>%top_n(3, wt = .cooksd)
+
+#Testing with removal of these highly influential points (sensitivity analysis)
+sdat<-no_diabetes%>%slice(-304,-337,-717)
+
+lms2<-lm(LBXGH~RIDAGEYR+active_min+BMXBMI+Ethnicity+Education,data=sdat)
+
+plot(lms2,4)
+
+#Messing around with stuff from stats2B notes
+glance(lm2)
+#plotting partial residual plots fro each of the predicators
+map(seq.int(1,5),~termplot(lm2, partial.resid=TRUE, terms=.x))
+
+plot(lm2,1)
+
+plot(lm2,2)
+
+
 ```
