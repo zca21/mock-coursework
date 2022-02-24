@@ -14,108 +14,69 @@ library(tidyverse)
 library(labelled)
 library(cowplot)
 library(kableExtra)
+library(broom)
 ```
-
-##Data exploration
 ```{r}
-summary(dat)
+#summary(dat)
 
-#summary_df<-as_tibble(dfSummary(dat))
+#Annual family income
+print("Annual family income largest values")
+tail(sort(dat$INDFMINC),n=15)
+#Jumps from 13 to 77, should investigate this
+#Body Mass Index
+print("BMI largest values")
+tail(sort(dat$BMXBMI),n=5)
+#130.21 extremely high compared to others, norm max value around 60.
+```
+We looked at the summary of the data to see if there are any outliers, missing data. We found that the highest amount of missing data was around 9% thus missingness was not a problem so we kept all variables. We identified LBXGH as the response variable as it is the % of Glycohemoglobin thus we remove all subjects that have a missing value for this variable as will not be useful in model prediction 
 
-#print(dfSummary(dat,style='grid', plain.ascii = FALSE, graph.col = FALSE))
+In terms of outliers we identified a very large BMI value of 130.21, calculating their weight using their height (168.8cm) we found they would have a weight of 371kg, thus we conclude this value is an error and will remove it. The family income variable has several values of 77 and 99 while the rest are below 14 thus we conclude that 77 and 99 are codes representing missing value or refused to comment, thus we remove these values.
 
 
-#describe(dat)
-#notice
-
-#Splitting into continous and categorical, notice 
-contvar<-names(dat%>%
-                select_if(is.numeric))
-catvar<-names(dat%>%
-                select_if(is.factor))
-
-names(dat)
-#labelling variables so know what they mean easily
-#no info on variables after LBXAPB
-
-#https://www.icpsr.umich.edu/web/NACDA/search/variables?start=0&sort=STUDYID%20asc%2CDATASETID%20asc%2CSTARTPOS%20asc&STUDYQ=25504&EXTERNAL_FLAG=1&ARCHIVE=NACDA&rows=50 does not even contain any info on the later variables (I think they have been renamed)
-
-var_label(dat) <- list(SEQN = "Respondent sequence number", RIAGENDR = "Gender",RIDAGEYR="Age at screening",RIDRETH1="Race/Ethnicity",
-                       DMDEDUC2="education level- adults 20+",DMDMARTL="Martial status",INDFMINC="Annual family income",LBXGH="Glycohemoglobin (%)",BMXHT="Standing Height (cm)",BMXBMI="Body Mass Index (kg/m**2)",BMXWAIST="Waist Circumference (cm)",LBXTR="	Triglyceride (mg/dL)",LBDLDL="LDL-cholesterol (mg/dL)",LBXAPB="Apolipoprotein (B) (mg/dL)",valid_days="",valid_min="",cpm="",sed_min="minimum sedintary",light_min="minimum light exercise",active_min="minimum active exercise",sed_percent="sedintary percent",light_percent="light exercise percent",life_percent="",mod_percent="moderate exercise percent",vig_percent="vigarous exercise percent",lightlife_percent="",mvpa_percent="moderate to vigorous physical activity",active_percent="percent of physical activity",sed_bouted_30min="",num_mvpa_bouts="",num_vig_bouts="",mvpa_bouted="",vig_bouted="",guideline_min="")
-
-#Formatting variables that should be continous
-#Used infomation from https://wwwn.cdc.gov/nchs/nhanes/2005-2006/DEMO_D.htm#RIDRETH1 to find labels for levels
-dat<-dat%>%mutate(Gender=factor(RIAGENDR,levels=c(1,2),labels=c("Male","Female")),
+```{r}
+#cleaning data to remove extreme values and create factors and creating new diabetes variable
+data_cleaned<-dat%>%filter(BMXBMI<130,INDFMINC<14,!is.na(LBXGH))%>%
+  mutate(Gender=factor(RIAGENDR,levels=c(1,2),labels=c("Male","Female")),
                   Ethnicity=factor(RIDRETH1,levels=c(1,2,3,4,5),labels=c("Mexican American","Other Hispanic","Non-Hispanic White","Non-Hispanic Black","Other Race")),
                   Education=factor(DMDEDUC2,levels = c(1,2,3,4,5),labels=c("< 9th grade","9-11th grade","high school grade","Some College","College graduate")),
                   Married=factor(DMDMARTL,levels = c(1:6),labels=c("Married","Widowed","Divorced","Seperated","Never Married","Living with partner")))%>%
-  select(-RIAGENDR,-RIDRETH1,-DMDEDUC2,-DMDMARTL)
+  select(-RIAGENDR,-RIDRETH1,-DMDEDUC2,-DMDMARTL)%>%
+  mutate(diabetes=ifelse(LBXGH>=6.5,"diabetes",ifelse(LBXGH>5.7,"pre-diabetes",ifelse(is.na(LBXGH)==F,"no diabetes",NA))))
 
-#Creating new variable which is used to sort subjects into 3 groups depending on their Glycohemoglobin (%) we note that 49 patients had an NA reading for this measurement
-dat<-dat%>%mutate(diabetes=ifelse(LBXGH>=6.5,"diabetes",ifelse(LBXGH>5.7,"pre-diabetes",ifelse(is.na(LBXGH)==F,"no diabetes",NA))))
+no_diabetes<-data_cleaned%>%filter(diabetes=="no diabetes")
 
-#we create a new dataset for patients that don't have diabetes/ pre-diabetes (we have to take care as we have excluded the 49 NA values from this datset)
-no_diabetes<-dat%>%filter(diabetes=="no diabetes")
-
+#investigating missing data (by calculating percentage of missing data for each variable)
+missing_data_perc<-no_diabetes %>% summarize_all(funs(round(sum(is.na(.))*100 / length(.),3)))
+dat %>% summarize_all(funs(round(sum(is.na(.))*100 / length(.),3)))
 ```
 
-##Inital plots to investigate variables and associations
 ```{r}
 #denisty/histogram of response variable to see skewness of response
 
-dens_gly<-ggplot(no_diabetes,aes(x=LBXGH))+geom_density()+
+
+hist_no_dia<-ggplot(no_diabetes,aes(x=LBXGH))+geom_histogram(bins = 20,color="black",fill="white")+
   ylab("Count")+
   xlab("Glycohemoglobin (%)")+
   theme(plot.background = element_rect(fill = "white"),panel.background = element_rect(fill = "white"),axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"),legend.background = element_rect(colour = "grey50"),panel.border = element_blank(),panel.grid.major = element_blank(), panel.grid.minor = element_blank(),axis.title=element_text(size=18,face="bold"),axis.text=element_text(size=18),axis.title.x = element_text(vjust=-0.1),legend.title=element_blank())
 
-hist_gly<-ggplot(no_diabetes,aes(x=LBXGH))+geom_histogram(bins = 20,color="black",fill="white")+
+hist_dia<-ggplot(data_cleaned,aes(x=LBXGH))+geom_histogram(bins = 20,color="black",fill="white")+
   ylab("Count")+
   xlab("Glycohemoglobin (%)")+
   theme(plot.background = element_rect(fill = "white"),panel.background = element_rect(fill = "white"),axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"),legend.background = element_rect(colour = "grey50"),panel.border = element_blank(),panel.grid.major = element_blank(), panel.grid.minor = element_blank(),axis.title=element_text(size=18,face="bold"),axis.text=element_text(size=18),axis.title.x = element_text(vjust=-0.1),legend.title=element_blank())
 
-plot_grid(dens_gly,hist_gly)
+plot_grid(hist_no_dia,hist_dia)
 ```
+We now create some plots from the filtered data that only includes subjects that have not been identified as diabetic/pre-diabetic from their Glycohemoglobin (A1C) levels.
 
-```{r}
-#creating 2 vectors of the continous and categorical variables
-contvar<-set_names(names(dat%>%
-                select_if(is.numeric)))
-catvar<-set_names(names(dat%>%
-                select_if(is.factor)))
-
-#creating plots for all continous and categorical variables
-
-#scatter plot and histograms for continous
-scatter_fun<-function(x){
- ggplot(no_diabetes,aes(x=.data[[x]],y=.data[["LBXGH"]]))+geom_point()
-}
-eval_plots<-map(contvar,~scatter_fun(.x))
-plot_grid(plotlist = eval_plots)
-
-hist_fun<-function(x){
-  ggplot(no_diabetes,aes(x=.data[[x]]))+geom_histogram(bins = 10)
-}
-hist_plots<-map(contvar,~hist_fun(.x))
-plot_grid(plotlist = hist_plots)
-
-#bopxplots and barcharts for categorical
-box_fun<-function(x){
- ggplot(no_diabetes,aes(x=.data[[x]],y=.data[["LBXGH"]]))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90))
-}
-eval_plots<-map(catvar,~box_fun(.x))
-plot_grid(plotlist = eval_plots)
-
-bar_func<-function(x){
-  ggplot(no_diabetes,aes(x=.data[[x]],fill=.data[[x]]))+geom_bar()+theme(axis.text.x = element_text(angle = 90),legend.position = "none")
-}
-
-
-bar_plots<-map(catvar,~bar_func(.x))
-plot_grid(plotlist = bar_plots)
-```
+First we check the skewness of the response A1C. We create 2 histograms for this one with only non-diabetic subjects (Plot A) and one with all subjects (plot B). Plot A does appear skewed but this is due to the removing the subjects with a higher A1C (diabetics and pre-diabetics) that can be seen by the more normal distribution of plot B.
 
 ```{r}
 #splitting continous variables so easier to view (gave up on automating the process)
+contvar<-set_names(names(no_diabetes%>%
+                select_if(is.numeric)))
+catvar<-set_names(names(no_diabetes%>%
+                select_if(is.factor)))
+
 split_var<-split(contvar,ceiling(seq_along(contvar)/12))
 
 scatter1<-map(as.list(names(split_var[[1]])),~scatter_fun(.x))
@@ -126,43 +87,25 @@ plot_grid(plotlist = scatter1)
 plot_grid(plotlist = scatter2)
 plot_grid(plotlist = scatter3)
 ```
+Next we plot each continous variable against the A1C value to identify any that are associated with it. From the plots we can see BMI waist circumference, the physical activity related variables, etc....
 
-##Correlation of continous variables
 ```{r}
-#removing SEQN variable as is only id number
-nd_filtered<-no_diabetes%>%select(-SEQN)
-
-#using only complete observations (this will introduce bias but will allow us to see associations that should exist even with the missing data unless systematic will need to look at how data was gathered etc)
-correlation<-round(cor(select_if(nd_filtered,is.numeric),use = "complete.obs"),2)
-correlation
-
-#Highlighting all elements of correlation matrix with absolute value greater than 0.5
-as.data.frame(correlation)%>%
-  mutate_all(~cell_spec(.x, color = ifelse(abs(.x)>0.5, "red"," black"))) %>%
-  kable(escape = F) %>%
-  kable_styling()
-
-#Looking at the results we can see many of the later active variables are highly correlated as would be expected therefore we should only select 1 (need to know more about their descriptions to choose) and maybe consult with a sport scientist at which excerise category is likely to be effect at reducing A1C (ie is any exercise effective or does it need to be moderate/vigorous?)
+box_fun<-function(x){
+ ggplot(no_diabetes,aes(x=.data[[x]],y=.data[["LBXGH"]]))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90))
+}
+eval_plots<-map(catvar,~box_fun(.x))
+plot_grid(plotlist = eval_plots)
 ```
+Producing boxplots for factor variables we see a slight variation but nothing that looks significant.
 
-##Associations of categorical variables
 ```{r}
-#Now we look at the categorical variables (minus the one I don't know how to code so is currently a continous variable)
-
-#seems ethnicity and education are correlated (confounded with each other), only include one
-xtabs(~Ethnicity+Education,data=dat)
-
-#looking at proptions of subjects with pre/diabetes to see if assocation exists between this and categoical variable as will give an idea of if these variables have an effect on likelihood of having high gly
-diabetes<-dat%>%filter(diabetes %in% c("diabetes","pre-diabetes"))
-
-#count grouped (do we want to do this for all categorical variables?)
-ggplot(dat,aes(x=Ethnicity,fill=diabetes))+geom_bar(position = "dodge")+theme(axis.text.x = element_text(angle = 90))
+diabetes<-data_cleaned%>%filter(diabetes %in% c("diabetes","pre-diabetes"))
 
 prop_func<-function(x_var){
   #creating proportion dataset to feed into ggplot
   group_var<-enquo(x_var)
-  merge_dat<-dat%>%group_by(!!group_var)%>%summarise(count_var=n())
-  plot_data<-dat%>%group_by(!!group_var,diabetes)%>%
+  merge_dat<-data_cleaned%>%group_by(!!group_var)%>%summarise(count_var=n())
+  plot_data<-data_cleaned%>%group_by(!!group_var,diabetes)%>%
      summarise(count_diabetes=n())%>%
      left_join(merge_dat)%>%
      mutate(proportion=round(count_diabetes/count_var,2))
@@ -184,33 +127,36 @@ pf_g<-prop_func(Gender)
 pf_ed<-prop_func(Education)
 
 plot_grid(pf_eth,pf_m,pf_g,pf_ed)
-
-#figure out how to get map to work at some point (if have time)
-#map(noquote(catvar), ~prop_func(.x))
 ```
+To give a better understanding of the categorical variables we plotted the proportion of each level of each categorical variable that had each diabetic status. From the plot we can see that non-hispanic black ethnicity, widowed, divorced and <9th grade education all have a high proportion of diabtic and pre-diabetic individuals which we will keep in mind for model selection.
 
-
-
-##model  fitting
-#would like to know what is defined as high Gly for non-diabetic patients
 ```{r}
-#From web search ways to lower A1C (Gylcohemoglobin) include: losing weight(in particular not being overweight-related to BMI), exercise, eat more vegtables (lower carbs)-I am going to assume this is easier for people more 'well off'
+#removing SEQN variable as is only id number
+nd_filtered<-no_diabetes%>%select(-SEQN)
 
-#from this I will want to include BMI, an excerise (choose MVPA arbitary until know more about them [only want to choose one as know they are highly correlated to each other]), annual family income, age (affects weight and also not include married status as confounded with this, [this may also be confounded with other variables such as exercise etc]), ethnicity as diabetic proportion seems to vary significantly with ethnicity
+#using only complete observations (this will introduce bias but will allow us to see associations that should exist even with the missing data unless systematic will need to look at how data was gathered etc)
+correlation<-round(cor(select_if(nd_filtered,is.numeric),use = "complete.obs"),2)
+correlation
 
-no_diabetes<-na.omit(no_diabetes)
+#Highlighting all elements of correlation matrix with absolute value greater than 0.5
+as.data.frame(correlation)%>%
+  mutate_all(~cell_spec(.x, color = ifelse(abs(.x)>0.5, "red"," black"))) %>%
+  kable(escape = F) %>%
+  kable_styling()
+```
+Looking at the correlation matrix for continuos variables we can see the different physical exercise variables are often highly correlated which we will keep in mind. BMI is very highly correlated with waist thus we will only choose at most one of these variables in model selection.
 
-#choose lm as simplist to start with
-lm1<-lm(LBXGH~RIDAGEYR+mvpa_percent+INDFMINC+BMXBMI+Ethnicity,data=no_diabetes)
+##Model selection
+```{r}
+#run through all physical exercise models
+
+lm1<-lm(LBXGH~BMXBMI+active_min,data = no_diabetes)
+glance(lm1)
 summary(lm1)
+```
+Initally we create a basic linear model with 2 predictor variables BMI and active_min selected as from our knowledge and the previous plots we believe these 2 variables are associated/have an influence on the response variable of A1C
 
-anova(lm1)
-
-
-#Now I will perform iteration using AIC with step function to find other models to compare to my intial one to see how they vary (will then need to consider other distributions)
-#start with forward iteration
-
-#had to do this line of code to stop errors (need to understand what this is actually doing though)
+```{r}
 no_diabetes<-na.omit(no_diabetes)
 
 lm_intercept<-lm(LBXGH~1,data=no_diabetes)
@@ -221,26 +167,58 @@ formula_all<-paste("LBXGH~",all_var,sep="")
 lm_all<-lm(formula_all,data=no_diabetes)
 forward_lm<-step(lm_intercept, direction='forward', scope=formula(lm_all),trace = 0)
 
-forward_lm$coefficients
-#The forward iteration has selected age, ethnicity, BMI, education,; minimum active time and seditary bouted 30 min 
+summary(forward_lm)
+glance(forward_lm)
 
-#Next do backward abd both iterations then compare to original model and evaluate what needs to be done
-
-backward_lm<-step(lm_all,direction="backward",scope=formula(lm_all),trace=0)
-backward_lm$coefficients
-#going backwards includes age, BMI, Ethnicity, Education,
-
-summary(backward_lm)
-
-#From previous knowledge LDLC and ApoB are both molecules that are linked to cardiovascular diseases and thus makes sense to be correlated with increase in Gly (may also be correlated with BMI)
-
-both_lm<- step(lm_intercept, direction='both', scope=formula(lm_all), trace=0)
-both_lm$coefficients
-#When applying iterations in both directions we find that the other lab readings are no longer significant
-#Age, Ethnicity, BMI, Education, minimun physical activity and sedintary bouted 30 min (agreeing with forward iteration of step function)
-
-#now we compare our initial model to the step function model to decide if any changes need to be made (wold proberally also want to consult an expert/ google)
-
-lm1$coefficients
-anova(lm1,forward_lm)
+# lm2<-lm(LBXGH~RIDAGEYR+active_min+BMXBMI+Ethnicity+Education,data=no_diabetes)
+# summary(lm2)
+# AIC(lm2)
 ```
+We then use the step function with forward direction to iteratively build a model with the "best" AIC from the algorthim. We now see that Age, Ethnicity, Education, gender and lifestyle intensity minutes instead of active minutes is the preferred physical activity variable (for lowest AIC).
+
+```{r}
+#If we want to do further testing of the linear model
+lm2<-update(forward_lm,.~.+BMXBMI:Gender)
+glance(lm2)
+summary(lm2)
+
+lm3<-update(forward_lm,.~.+life_min:RIDAGEYR)
+summary(lm3)
+
+lm4<-update(forward_lm,.~.+life_min:BMXBMI)
+summary(lm4)
+```
+We checked several plausible interactions from the step function selected model but found they had a negible effect on the response (their regession coefficent value was very small) and had non-significant p-values at a 5% level so we chose to not include them in our model
+
+
+##Checking our chosen model
+```{r}
+par(mfrow = c(2, 2))
+plot(forward_lm)
+```
+We choose the model selected by the step algorithm as we agree that all variables chosen could have an impact on A1C in an person. We now create several diagnostic plots to check the assumptions of our model. All diagnostic plots look reasonable (residuals show no correlation and randomly scattered, QQplot is a straight line, scale location plot displays homoscedasticity and no points have high influence) thus we conclude our model assumptions are met.
+
+##Model inference
+```{r}
+mean_no_dia<-mean(no_diabetes$LBXGH)
+5.7-mean_no_dia
+6.5-mean_no_dia
+
+tidy(forward_lm)
+```
+To identify what is a meaningful difference in A1C we calculate the mean of A1C in the diabetic group and see how much this value would need to be increased to fall into the pre-diabetic and diabetic categories. The increases would be approximately 0.54 and 1.34 respectively.
+
+Looking at the regession coefficents we can identify risk factors as those that have a significant influence on the response variable of A1C. All variables in the model are statistically significant so conclude they are associated with the response of A1C levels. We look at the regression coefficents to describe the nature of the association.
+Holding all other variables constant:
+Increasing age by 10 years increases A1C by 0.1
+Being a college graduate decreases A1C by 0.17 compared to having an education less than grade 9 and in general the higher the education level the greater to reduction in A1C is
+100 minutes of lifestyle intensity increases A1C by 0.045
+Being female reduces A1C by 0.04 compared to males
+Increaseing BMI by 10 points (difference from a normal BMI to overweight/obese BMI) increases A1C by 0.01
+The largest difference in A1C between Mexican American ethnicity and the other recorded ethnicities is the Non-Hispanic Black ethnicity that has an increase in A1C by 0.08 compared to Mexican American ethnicity individuals.
+
+##Concluding
+We found that Age, ethnicity, BMI, lifestlye intensity minutes, level of education and gender are all associated with Glycohemoglobin ( A1C) levels in non-diabetic people. With level of education and age having the largest effect on A1C levels. We speculate this is because higher educated individuals would be able to afford a more healthy diet which has a great effect on A1C and age is correlated with physical activity, weight and other variables that affect A1C.
+
+[We didn't have time to answer the second question]
+
