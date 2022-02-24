@@ -79,6 +79,10 @@ catvar<-set_names(names(no_diabetes%>%
 
 split_var<-split(contvar,ceiling(seq_along(contvar)/12))
 
+scatter_fun<-function(x){
+ ggplot(no_diabetes,aes(x=.data[[x]],y=.data[["LBXGH"]]))+geom_point()
+}
+
 scatter1<-map(as.list(names(split_var[[1]])),~scatter_fun(.x))
 scatter2<-map(as.list(names(split_var[[2]])),~scatter_fun(.x))
 scatter3<-map(as.list(names(split_var[[3]])),~scatter_fun(.x))
